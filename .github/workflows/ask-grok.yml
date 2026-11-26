@@ -1,59 +1,64 @@
 name: ask-grok
 on:
-  workflow_dispatch:
-    inputs:
-      message:
-        description: "Message for Grok"
-        required: true
-        type: string
-      system:
-        description: "Optional system prompt"
-        required: false
-        type: string
-        default: ""
-      model:
-        description: "xAI model id"
-        required: false
-        type: string
-        default: "grok-4.7"
+  push:
+    paths:
+      - "requests/*.json"
 
-permissions: {}
+permissions:
+  contents: write
 
 jobs:
   ask:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Ask Grok
         env:
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          MESSAGE: ${{ inputs.message }}
-          SYSTEM: ${{ inputs.system }}
-          MODEL: ${{ inputs.model }}
         run: |
-          python3 - <<'PY' > answer.md
-          import json, os, urllib.request
+          mkdir -p answers
+          python3 - <<'PY'
+          import glob, json, os, urllib.request, urllib.error
 
-          messages = []
-          if os.environ["SYSTEM"]:
-              messages.append({"role": "system", "content": os.environ["SYSTEM"]})
-          messages.append({"role": "user", "content": os.environ["MESSAGE"]})
+          try:
+              req_file = sorted(glob.glob("requests/*.json"))[-1]
+              with open(req_file) as f:
+                  spec = json.load(f)
+              messages = []
+              if spec.get("system"):
+                  messages.append({"role": "system", "content": spec["system"]})
+              messages.extend(spec.get("history") or [])
+              messages.append({"role": "user", "content": spec["message"]})
+              req = urllib.request.Request(
+                  "https://api.x.ai/v1/chat/completions",
+                  data=json.dumps({
+                      "model": spec.get("model", "grok-4.7"),
+                      "messages": messages,
+                  }).encode(),
+                  headers={
+                      "Authorization": "Bearer " + os.environ["XAI_API_KEY"],
+                      "Content-Type": "application/json",
+                  },
+              )
+              with urllib.request.urlopen(req, timeout=240) as r:
+                  data = json.load(r)
+              answer = data["choices"][0]["message"]["content"]
+          except urllib.error.HTTPError as e:
+              answer = "HTTP_ERROR " + str(e.code) + ": " + e.read().decode(errors="replace")[:2000]
+          except Exception as e:
+              answer = "ERROR: " + type(e).__name__ + ": " + str(e)[:2000]
 
-          req = urllib.request.Request(
-              "https://api.x.ai/v1/chat/completions",
-              data=json.dumps({"model": os.environ["MODEL"], "messages": messages}).encode(),
-              headers={
-                  "Authorization": "Bearer " + os.environ["XAI_API_KEY"],
-                  "Content-Type": "application/json",
-              },
-          )
-          with urllib.request.urlopen(req, timeout=240) as r:
-              data = json.load(r)
-          print(data["choices"][0]["message"]["content"])
+          ts = os.environ.get("GITHUB_RUN_ID", "local")
+          with open(f"answers/{ts}.md", "w") as f:
+              f.write(answer)
           PY
-          cat answer.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload answer
-        uses: actions/upload-artifact@v4
-        with:
-          name: answer
-          path: answer.md
+      - name: Commit answer
+        run: |
+          git config user.name "grok-bridge"
+          git config user.email "actions@users.noreply.github.com"
+          git add answers
+          git commit -m "grok answer (run ${{ github.run_id }})"
+          git pull --rebase origin main
+          git push
