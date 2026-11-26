@@ -19,8 +19,9 @@ jobs:
         run: |
           mkdir -p answers
           python3 - <<'PY'
-          import glob, json, os, urllib.request, urllib.error
+          import glob, json, os, traceback, urllib.request, urllib.error
 
+          diag = []
           try:
               req_file = sorted(glob.glob("requests/*.json"))[-1]
               with open(req_file) as f:
@@ -30,27 +31,33 @@ jobs:
                   messages.append({"role": "system", "content": spec["system"]})
               messages.extend(spec.get("history") or [])
               messages.append({"role": "user", "content": spec["message"]})
+
+              key = os.environ["XAI_API_KEY"]
+              non_ascii = sorted({hex(ord(c)) for c in key if ord(c) > 126})
+              diag.append(
+                  "key_len=%d key_ascii=%s non_ascii_codepoints=%s"
+                  % (len(key), key.isascii(), non_ascii)
+              )
+
               req = urllib.request.Request(
                   "https://api.x.ai/v1/chat/completions",
                   data=json.dumps({
                       "model": spec.get("model", "grok-4.7"),
                       "messages": messages,
-                  }).encode(),
+                  }).encode("utf-8"),
                   headers={
-                      "Authorization": "Bearer " + os.environ["XAI_API_KEY"],
+                      "Authorization": "Bearer " + key,
                       "Content-Type": "application/json",
                   },
               )
               with urllib.request.urlopen(req, timeout=240) as r:
                   data = json.load(r)
               answer = data["choices"][0]["message"]["content"]
-          except urllib.error.HTTPError as e:
-              answer = "HTTP_ERROR " + str(e.code) + ": " + e.read().decode(errors="replace")[:2000]
           except Exception as e:
-              answer = "ERROR: " + type(e).__name__ + ": " + str(e)[:2000]
+              answer = "ERROR: " + type(e).__name__ + ": " + str(e)[:500] + "\n\nDIAG:\n" + "\n".join(diag) + "\n\nTRACEBACK:\n" + traceback.format_exc()[:3000]
 
           ts = os.environ.get("GITHUB_RUN_ID", "local")
-          with open(f"answers/{ts}.md", "w") as f:
+          with open(f"answers/{ts}.md", "w", encoding="utf-8") as f:
               f.write(answer)
           PY
 
