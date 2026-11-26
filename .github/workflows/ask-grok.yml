@@ -1,0 +1,59 @@
+name: ask-grok
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: "Message for Grok"
+        required: true
+        type: string
+      system:
+        description: "Optional system prompt"
+        required: false
+        type: string
+        default: ""
+      model:
+        description: "xAI model id"
+        required: false
+        type: string
+        default: "grok-4.7"
+
+permissions: {}
+
+jobs:
+  ask:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask Grok
+        env:
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          MESSAGE: ${{ inputs.message }}
+          SYSTEM: ${{ inputs.system }}
+          MODEL: ${{ inputs.model }}
+        run: |
+          python3 - <<'PY' > answer.md
+          import json, os, urllib.request
+
+          messages = []
+          if os.environ["SYSTEM"]:
+              messages.append({"role": "system", "content": os.environ["SYSTEM"]})
+          messages.append({"role": "user", "content": os.environ["MESSAGE"]})
+
+          req = urllib.request.Request(
+              "https://api.x.ai/v1/chat/completions",
+              data=json.dumps({"model": os.environ["MODEL"], "messages": messages}).encode(),
+              headers={
+                  "Authorization": "Bearer " + os.environ["XAI_API_KEY"],
+                  "Content-Type": "application/json",
+              },
+          )
+          with urllib.request.urlopen(req, timeout=240) as r:
+              data = json.load(r)
+          print(data["choices"][0]["message"]["content"])
+          PY
+          cat answer.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload answer
+        uses: actions/upload-artifact@v4
+        with:
+          name: answer
+          path: answer.md
