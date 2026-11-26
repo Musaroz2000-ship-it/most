@@ -24,8 +24,8 @@ jobs:
           PROVIDERS = {
               "xai-": ("https://api.x.ai/v1", "grok-4.7"),
               "gsk_": ("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
-              "AIza": ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.5-flash"),
-              "AQ.": ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.5-flash"),
+              "AIza": ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-3.8-flash"),
+              "AQ.": ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-3.8-flash"),
           }
 
           diag = []
