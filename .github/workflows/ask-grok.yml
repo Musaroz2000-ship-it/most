@@ -15,7 +15,7 @@ jobs:
 
       - name: Ask Grok
         env:
-          AI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          AI_API_KEY: ${{ secrets.XAI_API_KEY || secrets.GEMINI_API_KEY || secrets.Gemini || secrets.GROK_API_KEY }}
         run: |
           mkdir -p answers
           python3 - <<'PY'
