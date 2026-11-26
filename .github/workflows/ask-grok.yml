@@ -53,8 +53,9 @@ jobs:
                       (None, None),
                   )
                   if base_url is None:
-                      raise RuntimeError("unknown key format, prefix=%s" % key[:4])
-                  with_key = True
+                      base_url, default_model, with_key = "https://text.pollinations.ai/openai", "openai", False
+                  else:
+                      with_key = True
               base_url = spec.get("base_url", base_url)
               model = spec.get("model", default_model)
               diag.append("base_url=%s model=%s" % (base_url, model))
