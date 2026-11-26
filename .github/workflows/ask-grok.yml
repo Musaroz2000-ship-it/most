@@ -47,11 +47,20 @@ jobs:
                   headers={
                       "Authorization": "Bearer " + key,
                       "Content-Type": "application/json",
+                      "Accept": "application/json",
+                      "User-Agent": "grok-bridge/0.1",
                   },
               )
               with urllib.request.urlopen(req, timeout=240) as r:
                   data = json.load(r)
               answer = data["choices"][0]["message"]["content"]
+          except urllib.error.HTTPError as e:
+              body = ""
+              try:
+                  body = e.read().decode("utf-8", errors="replace")[:2000]
+              except Exception:
+                  pass
+              answer = "HTTP_ERROR %s\nBODY: %s" % (e.code, body)
           except Exception as e:
               answer = "ERROR: " + type(e).__name__ + ": " + str(e)[:500] + "\n\nDIAG:\n" + "\n".join(diag) + "\n\nTRACEBACK:\n" + traceback.format_exc()[:3000]
 
