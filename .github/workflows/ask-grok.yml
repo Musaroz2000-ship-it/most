@@ -19,7 +19,7 @@ jobs:
         run: |
           mkdir -p answers
           python3 - <<'PY'
-          import glob, json, os, traceback, urllib.request, urllib.error
+          import glob, json, os, re, traceback, urllib.request, urllib.error
 
           diag = []
           try:
@@ -32,12 +32,11 @@ jobs:
               messages.extend(spec.get("history") or [])
               messages.append({"role": "user", "content": spec["message"]})
 
-              key = os.environ["XAI_API_KEY"]
-              non_ascii = sorted({hex(ord(c)) for c in key if ord(c) > 126})
-              diag.append(
-                  "key_len=%d key_ascii=%s non_ascii_codepoints=%s"
-                  % (len(key), key.isascii(), non_ascii)
-              )
+              key = os.environ["XAI_API_KEY"].strip()
+              m = re.search(r"xai-[A-Za-z0-9]+", key)
+              if m:
+                  key = m.group(0)
+              diag.append("key_len=%d key_ascii=%s" % (len(key), key.isascii()))
 
               req = urllib.request.Request(
                   "https://api.x.ai/v1/chat/completions",
