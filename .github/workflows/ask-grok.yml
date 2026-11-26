@@ -45,45 +45,65 @@ jobs:
                   key = m.group(0)
               diag.append("key_len=%d key_ascii=%s prefix=%s" % (len(key), key.isascii(), key[:4]))
 
-              if spec.get("provider") == "pollinations":
+              base_url, default_model = next(
+                  (v for k, v in PROVIDERS.items() if key.startswith(k)),
+                  (None, None),
+              )
+              if base_url is None:
                   base_url, default_model, with_key = "https://text.pollinations.ai/openai", "openai", False
               else:
-                  base_url, default_model = next(
-                      (v for k, v in PROVIDERS.items() if key.startswith(k)),
-                      (None, None),
-                  )
-                  if base_url is None:
-                      base_url, default_model, with_key = "https://text.pollinations.ai/openai", "openai", False
-                  else:
-                      with_key = True
+                  with_key = True
+              if spec.get("provider") == "pollinations":
+                  base_url, default_model, with_key = "https://text.pollinations.ai/openai", "openai", False
               base_url = spec.get("base_url", base_url)
               model = spec.get("model", default_model)
               diag.append("base_url=%s model=%s" % (base_url, model))
 
-              headers = {
-                  "Content-Type": "application/json",
-                  "Accept": "application/json",
-                  "User-Agent": "grok-bridge/0.3",
-              }
+              import time
+              attempts = [(base_url, model, with_key)]
               if with_key:
-                  headers["Authorization"] = "Bearer " + key
-              req = urllib.request.Request(
-                  base_url.rstrip("/") + "/chat/completions",
-                  data=json.dumps({"model": model, "messages": messages}).encode("utf-8"),
-                  headers=headers,
-              )
-              with urllib.request.urlopen(req, timeout=600) as r:
-                  data = json.load(r)
-              answer = data["choices"][0]["message"]["content"]
-          except urllib.error.HTTPError as e:
-              body = ""
-              try:
-                  body = e.read().decode("utf-8", errors="replace")[:2000]
-              except Exception:
-                  pass
-              answer = "HTTP_ERROR %s\nBODY: %s" % (e.code, body)
+                  attempts.append(("https://text.pollinations.ai/openai", "openai", False))
+
+              answer = None
+              last_error = ""
+              for url, mdl, wk in attempts:
+                  for attempt in range(2):
+                      headers = {
+                          "Content-Type": "application/json",
+                          "Accept": "application/json",
+                          "User-Agent": "grok-bridge/0.4",
+                      }
+                      if wk:
+                          headers["Authorization"] = "Bearer " + key
+                      req = urllib.request.Request(
+                          url.rstrip("/") + "/chat/completions",
+                          data=json.dumps({"model": mdl, "messages": messages}).encode("utf-8"),
+                          headers=headers,
+                      )
+                      try:
+                          with urllib.request.urlopen(req, timeout=600) as r:
+                              data = json.load(r)
+                          answer = data["choices"][0]["message"]["content"]
+                          break
+                      except urllib.error.HTTPError as e:
+                          body = ""
+                          try:
+                              body = e.read().decode("utf-8", errors="replace")[:1000]
+                          except Exception:
+                              pass
+                          last_error = "HTTP_ERROR %s at %s: %s" % (e.code, url, body)
+                          if e.code < 500:
+                              break
+                      except Exception as e:
+                          last_error = "ERROR %s at %s: %s" % (type(e).__name__, url, str(e)[:500])
+                  if answer:
+                      break
+                  diag.append(last_error)
+                  time.sleep(15)
+              if not answer:
+                  answer = "NO_ANSWER\n" + "\n".join(diag)
           except Exception as e:
-              answer = "ERROR: " + type(e).__name__ + ": " + str(e)[:500] + "\n\nDIAG:\n" + "\n".join(diag) + "\n\nTRACEBACK:\n" + traceback.format_exc()[:3000]
+              answer = "FATAL: " + type(e).__name__ + ": " + str(e)[:300]
 
           ts = os.environ.get("GITHUB_RUN_ID", "local")
           with open(f"answers/{ts}.md", "w", encoding="utf-8") as f:
