@@ -72,7 +72,7 @@ jobs:
                   data=json.dumps({"model": model, "messages": messages}).encode("utf-8"),
                   headers=headers,
               )
-              with urllib.request.urlopen(req, timeout=240) as r:
+              with urllib.request.urlopen(req, timeout=600) as r:
                   data = json.load(r)
               answer = data["choices"][0]["message"]["content"]
           except urllib.error.HTTPError as e:
